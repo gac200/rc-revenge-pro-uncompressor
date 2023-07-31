@@ -42,16 +42,22 @@ def main():
                 sfx_loop = int.from_bytes(sfx_info[0x14:0x18], "little")
                 sfx_resource_id = int.from_bytes(sfx_info[0x18:0x1C], "little")
                 sfx_loop_addr = int.from_bytes(sfx_info[0x1C:0x20], "little")
-                sfx_info = [sfx_addr, sfx_size, sfx_img_addr, sfx_img_size, sfx_multi, sfx_loop, sfx_resource_id, sfx_loop_addr]
+                sfx_info = {"addr": sfx_addr, "size": sfx_size, "img_addr": sfx_img_addr, "img_size": sfx_img_size,
+                            "multi": sfx_multi, "loop": sfx_loop, "resource_id": sfx_resource_id, "loop_addr": sfx_loop_addr}
                 print(sfx_info)
                 sfx_info_list.append(sfx_info)
                 hasAllZeros = False
                 break
-    #print(sfx_info_list)
     
-    with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
-        o.write(uncompressed_sfx)
-    #Each sfx struct is 32 bytes long, more info to follow...
+    current_sfx_offset = 0
+    for s in sfx_info_list:
+        current_sfx_offset = current_sfx_offset + s["size"]
+        adp = uncompressed_sfx[current_sfx_offset - s["size"]:current_sfx_offset]
+        with open(file_path_decompressed + str(s["resource_id"]) + ".adp", mode="wb") as o:
+            o.write(adp)      
+    
+    #with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
+        #o.write(uncompressed_sfx)
      
     tex_compressed_size_offset = sfx_end
     tex_offset = tex_compressed_size_offset + 4
