@@ -14,6 +14,7 @@ def main():
         contents = f.read()
 
     SFX_CAT_OFFSET = 0x38
+    SFX_INFO_LEN = 0x20
     SFX_COMPRESSED_SIZE_OFFSET = 0x14EC
     sfx_offset = SFX_COMPRESSED_SIZE_OFFSET + 4
     sfx_compressed_size = contents[SFX_COMPRESSED_SIZE_OFFSET:SFX_COMPRESSED_SIZE_OFFSET + 4]
@@ -21,6 +22,32 @@ def main():
     sfx_end = sfx_offset + sfx_compressed_size
     
     uncompressed_sfx = zlib.decompress(contents[sfx_offset:sfx_end])
+    
+    # Store information about sfx
+    sfx_index = 0
+    sfx_info = []
+    sfx_info_list = []
+    hasAllZeros = False
+    while not hasAllZeros:
+        sfx_info = contents[SFX_CAT_OFFSET + (SFX_INFO_LEN * sfx_index):SFX_CAT_OFFSET + SFX_INFO_LEN * sfx_index + SFX_INFO_LEN]
+        sfx_index = sfx_index + 1
+        hasAllZeros = True
+        for b in sfx_info:
+            if b != 0:
+                sfx_addr = int.from_bytes(sfx_info[0x0:0x4], "little")
+                sfx_size = int.from_bytes(sfx_info[0x4:0x8], "little")
+                sfx_img_addr = int.from_bytes(sfx_info[0x8:0xC], "little")
+                sfx_img_size = int.from_bytes(sfx_info[0xC:0x10], "little")
+                sfx_multi = int.from_bytes(sfx_info[0x10:0x14], "little")
+                sfx_loop = int.from_bytes(sfx_info[0x14:0x18], "little")
+                sfx_resource_id = int.from_bytes(sfx_info[0x18:0x1C], "little")
+                sfx_loop_addr = int.from_bytes(sfx_info[0x1C:0x20], "little")
+                sfx_info = [sfx_addr, sfx_size, sfx_img_addr, sfx_img_size, sfx_multi, sfx_loop, sfx_resource_id, sfx_loop_addr]
+                print(sfx_info)
+                sfx_info_list.append(sfx_info)
+                hasAllZeros = False
+                break
+    #print(sfx_info_list)
     
     with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
         o.write(uncompressed_sfx)
