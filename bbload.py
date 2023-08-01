@@ -7,8 +7,11 @@ def main():
     file_index = int(sys.argv[1])
     file_path = "BB/" + str(file_index // 10) + "/" + str(file_index % 10) + ".BBK"
     file_path_decompressed = "BBDecomp/" + str(file_index // 10) + "/" + str(file_index % 10) + "/"
+    sfx_path = file_path_decompressed + "SFX/"
     if not os.path.exists(file_path_decompressed):
         os.makedirs(file_path_decompressed)
+    if not os.path.exists(sfx_path):
+        os.makedirs(sfx_path)
 
     with open(file_path, mode="rb") as f:
         contents = f.read()
@@ -22,6 +25,8 @@ def main():
     sfx_end = sfx_offset + sfx_compressed_size
     
     uncompressed_sfx = zlib.decompress(contents[sfx_offset:sfx_end])
+    with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
+        o.write(uncompressed_sfx)
     
     # Store information about sfx
     sfx_index = 0
@@ -52,13 +57,17 @@ def main():
     current_sfx_offset = 0
     for s in sfx_info_list:
         current_sfx_offset = current_sfx_offset + s["size"]
-        adp = uncompressed_sfx[current_sfx_offset - s["size"]:current_sfx_offset]
-        with open(file_path_decompressed + str(s["resource_id"]) + ".adp", mode="wb") as o:
+        adp = uncompressed_sfx[s["addr"] - 0x5000:s["addr"] - 0x5000 + s["size"]]
+        with open(sfx_path + str(s["resource_id"]) + ".adp", mode="wb") as o:
             o.write(adp)
-        with open(file_path_decompressed + str(s["resource_id"]) + ".adp.txth", mode="w") as o:
+        with open(sfx_path + str(s["resource_id"]) + ".adp.txth", mode="w") as o:
             o.write("codec = PSX\n")
-            if s["multi"] == 2048:
+            if s["multi"] == 1024:
+                o.write("sample_rate = 11025\n")
+            elif s["multi"] == 2048:
                 o.write("sample_rate = 22050\n")
+            elif s["multi"] == 2136:
+                o.write("sample_rate = 32000\n")
             elif s["multi"] == 4096:
                 o.write("sample_rate = 44100\n")
             else:
@@ -70,10 +79,7 @@ def main():
             if s["loop"] == True:
                 o.write("loop_start_sample = " + str(s["loop_addr"] - s["addr"]) + "\n")
                 o.write("loop_end = data_size")
-    
-    #with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
-        #o.write(uncompressed_sfx)
-     
+ 
     tex_compressed_size_offset = sfx_end
     tex_offset = tex_compressed_size_offset + 4
     tex_compressed_size = contents[tex_compressed_size_offset:tex_compressed_size_offset + 4]
