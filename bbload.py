@@ -54,7 +54,22 @@ def main():
         current_sfx_offset = current_sfx_offset + s["size"]
         adp = uncompressed_sfx[current_sfx_offset - s["size"]:current_sfx_offset]
         with open(file_path_decompressed + str(s["resource_id"]) + ".adp", mode="wb") as o:
-            o.write(adp)      
+            o.write(adp)
+        with open(file_path_decompressed + str(s["resource_id"]) + ".adp.txth", mode="w") as o:
+            o.write("codec = PSX\n")
+            if s["multi"] == 2048:
+                o.write("sample_rate = 22050\n")
+            elif s["multi"] == 4096:
+                o.write("sample_rate = 44100\n")
+            else:
+                print("Warning: no known sample rate for " + str(s["resource_id"]) + ".adp")
+            o.write("channels = 1\n")
+            o.write("interleave = 0x1000\n")
+            o.write("start_offset = 0x10\n")
+            o.write("num_samples = data_size\n")
+            if s["loop"] == True:
+                o.write("loop_start_sample = " + str(s["loop_addr"] - s["addr"]) + "\n")
+                o.write("loop_end = data_size")
     
     #with open(file_path_decompressed + "SFX.BBK", mode="wb") as o:
         #o.write(uncompressed_sfx)
