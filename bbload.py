@@ -3,6 +3,8 @@ import struct
 import sys
 import zlib
 
+TEX = 0
+
 def main():
 
     file_index = int(sys.argv[1])
@@ -89,7 +91,9 @@ def main():
     uncompressed_tex = zlib.decompress(contents[tex_offset:tex_end])
     with open(file_path_decompressed + "TEX.BBK", mode="wb") as o:
         o.write(uncompressed_tex)
-        
+    global TEX
+    TEX = uncompressed_tex    
+    
     anim_tex_compressed_size_offset = tex_end
     anim_tex_offset = anim_tex_compressed_size_offset + 4
     anim_tex_compressed_size = contents[anim_tex_compressed_size_offset:anim_tex_compressed_size_offset + 4]
@@ -116,6 +120,7 @@ def main():
 
 HANDLES_END = 0x9876F0
 TEX_END = 0x1050000
+TEX_END_OFFSET = 0xE5C000
 ANIM_TEX_END = 0x1FF0000
 ANIM_TEX_END_OFFSET = 0x16ECF4C
 def get_fe_level_data(in_anim_tex):
@@ -206,16 +211,17 @@ def get_fe_level_data(in_anim_tex):
 def get__sLevelData(in_data, offset):
     data = in_data[offset:offset + 0x64]
     level_data = {
-        "pALFData": get_lsParent(in_data, int.from_bytes(data[0x0:0x4], "little") - ANIM_TEX_END_OFFSET), # working on this
-        "pTSOData": int.from_bytes(data[0x4:0x8], "little"),
-        "pAnimData": int.from_bytes(data[0x8:0xc], "little"),
-        "pVISData": int.from_bytes(data[0xc:0x10], "little"),
-        "pSVF": int.from_bytes(data[0x10:0x14], "little"),
-        "pAColGrid": int.from_bytes(data[0x14:0x18], "little"),
-        "pAColGridInt": int.from_bytes(data[0x18:0x1c], "little"),
-        "pCameras": int.from_bytes(data[0x1c:0x20], "little"),
-        "pPaths": int.from_bytes(data[0x20:0x24], "little"),
-        "pSFXData": int.from_bytes(data[0x24:0x28], "little"),
+        "pALFData": get_lsParent(in_data, int.from_bytes(data[0x0:0x4], "little") - ANIM_TEX_END_OFFSET),
+        "pTSOData": get__sTSOHeader(in_data, int.from_bytes(data[0x4:0x8], "little") - ANIM_TEX_END_OFFSET),
+        "pAnimData": get_animFile(in_data, int.from_bytes(data[0x8:0xc], "little") - ANIM_TEX_END_OFFSET),
+        "pVISData": get__sVISHdr(in_data, int.from_bytes(data[0xc:0x10], "little") - ANIM_TEX_END_OFFSET),
+        "pSVF": get_svfHeader(in_data, int.from_bytes(data[0x10:0x14], "little") - ANIM_TEX_END_OFFSET),
+        "pAColGrid": get__sColGridPSX(in_data, int.from_bytes(data[0x14:0x18], "little") - ANIM_TEX_END_OFFSET),
+        # This may not be necessary, left over from PS?
+        #"pAColGridInt": get__sColGridPSX(in_data, int.from_bytes(data[0x18:0x1c], "little") - ANIM_TEX_END_OFFSET),
+        "pCameras": get__sCamData(in_data, int.from_bytes(data[0x1c:0x20], "little") - ANIM_TEX_END_OFFSET),
+        "pPaths": int.from_bytes(data[0x20:0x24], "little") - ANIM_TEX_END_OFFSET,
+        "pSFXData": int.from_bytes(data[0x24:0x28], "little") - ANIM_TEX_END_OFFSET, # working on this
         "pMVARList": int.from_bytes(data[0x28:0x2c], "little"),
         "pGeneralText": int.from_bytes(data[0x2c:0x30], "little"),
         "pStartData":int.from_bytes(data[0x30:0x34], "little"),
@@ -233,12 +239,120 @@ def get__sLevelData(in_data, offset):
         "pEnvMap": int.from_bytes(data[0x60:0x64], "little")
     }
     #print(level_data)
+    level_data["pPaths"] = get__sCameraPath_list(in_data, level_data["pPaths"], level_data["pCameras"]["numCams"])
+    #print(level_data["pPaths"])
     return level_data
+    
+def get__sCameraPath_list(in_data, offset, num):
+    print(offset)
+    camera_path_list = []
+    for i in range(num):
+        data = int.from_bytes(in_data[offset:offset + 0x4], "little") - ANIM_TEX_END_OFFSET
+        camera_path = get__sCameraPath(in_data, data)
+        offset = offset + 0x4
+        camera_path_list.append(camera_path)
+    #print(camera_path_list)
+    return camera_path_list
+    
+def get__sCameraPath(in_data, offset):
+    data = in_data[offset:offset + 0x8]
+    camera_path = {
+        "pathLength": int.from_bytes(data[0x0:0x1], "little"),
+        "pathGroup": int.from_bytes(data[0x1:0x2], "little"),
+        "pathSpeed": int.from_bytes(data[0x2:0x4], "little", signed = True),
+        "pathIdTag": int.from_bytes(data[0x4:0x8], "little"),
+    }
+    #print(camera_path)
+    return camera_path   
+
+def get__sCamData(in_data, offset):
+    data = in_data[offset:offset + 0x4]
+    cam_data = {
+        "numCams": int.from_bytes(data, "little")
+    }
+    #print(cam_data)
+    return cam_data
+
+def get__sColGridPSX(in_data, offset):
+    data = in_data[offset:offset + 0x58]
+    col_grid_psx = {
+        "min": get__sColWorldVecPSX(data[0x0:0xc]),
+        "max": get__sColWorldVecPSX(data[0xc:0x18]),
+        "extra": get__sColWorldVecPSX(data[0x18:0x24]),
+        "numCellsX": int.from_bytes(data[0x24:0x28], "little", signed = True),
+        "numCellsZ": int.from_bytes(data[0x28:0x2c], "little", signed = True),
+        "totalCells": int.from_bytes(data[0x2c:0x30], "little", signed = True),
+        "numPolys": int.from_bytes(data[0x30:0x34], "little", signed = True),
+        "numIds": int.from_bytes(data[0x34:0x38], "little", signed = True),
+        "numVectors": int.from_bytes(data[0x38:0x3c], "little", signed = True),
+    }
+    #print(col_grid_psx)
+    return col_grid_psx
+    
+def get__sColWorldVecPSX(data):
+    col_world_psx = {
+        "x": struct.unpack("<f", data[0x0:0x4])[0],
+        "y": struct.unpack("<f", data[0x4:0x8])[0],
+        "z": struct.unpack("<f", data[0x8:0xc])[0]
+    }
+    #print(col_world_psx)
+    return col_world_psx
+
+def get_svfHeader(in_data, offset):
+    data = in_data[offset:offset + 0xc]
+    svf_header = {
+        "vectors": int.from_bytes(data[0x0:0x2], "little"),
+        "slices": int.from_bytes(data[0x2:0x4], "little"),
+        "anglePerSlice": int.from_bytes(data[0x4:0x6], "little"),
+        "pad": int.from_bytes(data[0x6:0x8], "little"),
+        "pVectors": get_SVECTOR(in_data, int.from_bytes(data[0x8:0xc], "little") - ANIM_TEX_END_OFFSET)
+    }
+    #print(svf_header)
+    return svf_header
+    
+def get_SVECTOR(in_data, offset):
+    data = in_data[offset:offset + 0x8]
+    vector = {
+        "vx": int.from_bytes(data[0x0:0x2], "little"),
+        "vy": int.from_bytes(data[0x2:0x4], "little"),
+        "vz": int.from_bytes(data[0x4:0x6], "little"),
+        "pad": int.from_bytes(data[0x6:0x8], "little"),
+    }
+    #print(vector)
+    return vector
+
+def get__sVISHdr(in_data, offset):
+    data = in_data[offset:offset + 0x4]
+    vis_hdr = {
+        "numBoxes": int.from_bytes(data[0x0:0x2], "little"),
+        "defaultDepthMesh": int.from_bytes(data[0x2:0x4], "little"),
+    }
+    #print(vis_hdr)
+    return vis_hdr
+    
+def get_animFile(in_data, offset):
+    data = in_data[offset:offset + 0x8]
+    anim_file = {
+        "linearCount": int.from_bytes(data[0x0:0x2], "little"),
+        "spinCount": int.from_bytes(data[0x2:0x4], "little"),
+        "swingCount": int.from_bytes(data[0x4:0x6], "little"),
+        "bezierCount": int.from_bytes(data[0x6:0x8], "little"),
+    }
+    #print(anim_file)
+    return anim_file
+    
+def get__sTSOHeader(in_data, offset):
+    data = in_data[offset:offset + 0x4]
+    tso_header = {
+        "numObj": int.from_bytes(data, "little")
+    }
+    #print(tso_header)
+    return tso_header
 
 def get_lsParent(in_data, offset):
     data = in_data[offset: offset + 0x74]
     ls_parent = {
-        "shape": get_sRdrVUShape(in_data, offset), # working on this
+        "shape": get_sRdrVUShape(in_data, offset),
         "minX": int.from_bytes(data[0x58:0x5c], "little", signed="True"),
         "minZ": int.from_bytes(data[0x5c:0x60], "little", signed="True"),
         "xCells": int.from_bytes(data[0x60:0x64], "little", signed="True"),
@@ -260,14 +374,109 @@ def get_sRdrVUShape(in_data, offset):
         "numTex": int.from_bytes(data[0x38:0x3c], "little", signed="True"),
         "numTri": int.from_bytes(data[0x3c:0x40], "little", signed="True"),
         "radius": struct.unpack("<f", data[0x40:0x44])[0],
-        "pTex": [get__sGfxTexture(in_data, int.from_bytes(in_data[int.from_bytes(data[0x44:0x48], "little") - ANIM_TEX_END_OFFSET + 4 * i:int.from_bytes(data[0x44:0x48], "little") - ANIM_TEX_END_OFFSET + 4 * i + 4], "little") - ANIM_TEX_END_OFFSET) for i in range(int.from_bytes(data[0x38:0x3c], "little", signed="True"))], # working on this
-        "pTri": int.from_bytes(data[0x48:0x4c], "little"),
+        "pTex": int.from_bytes(data[0x44:0x48], "little") - ANIM_TEX_END_OFFSET,
+        "pTri": int.from_bytes(data[0x48:0x4c], "little") - ANIM_TEX_END_OFFSET,
         "numFixups": int.from_bytes(data[0x4c:0x50], "little"),
-        "pTexFixList": int.from_bytes(data[0x50:0x54], "little"),
-        "pAlpha": int.from_bytes(data[0x54:0x58], "little")
+        "pTexFixList": int.from_bytes(data[0x50:0x54], "little") - ANIM_TEX_END_OFFSET,
+        "pAlpha": get_sRdrAlphaData(in_data, int.from_bytes(data[0x54:0x58], "little") - ANIM_TEX_END_OFFSET)
     }
+    rdr_vu_shape["pTex"] = get__sGfxTexture_list(in_data, rdr_vu_shape["pTex"], rdr_vu_shape["numTex"])
+    rdr_vu_shape["pTri"] = get_uint16_list(in_data, rdr_vu_shape["pTri"], rdr_vu_shape["numTri"])
+    rdr_vu_shape["pTexFixList"] = get_uint_list(in_data, rdr_vu_shape["pTexFixList"], rdr_vu_shape["numFixups"])
     #print(rdr_vu_shape)
     return rdr_vu_shape
+    
+def get_sRdrAlphaData(in_data, offset):
+    data = in_data[offset:offset + 0xF0]
+    rdr_alpha_data = {
+        "numPolys": int.from_bytes(data[0x0:0x4], "little", signed="True"),
+        "dummy1": int.from_bytes(data[0x4:0x8], "little", signed="True"),
+        "dummy2": int.from_bytes(data[0x8:0xc], "little", signed="True"),
+        "dummy3": int.from_bytes(data[0xc:0x10], "little", signed="True"),
+        "alphaPolys": [get_sVUTri(data[0x10:0xF0])]
+    }
+    #print(rdr_alpha_data)
+    return rdr_alpha_data
+    
+def get_sVUTri(data):
+    vu_tri = {
+        "tex0": int.from_bytes(data[0x0:0x8], "little"),
+        "texCount": int.from_bytes(data[0x8:0xc], "little"),
+        "pad0": int.from_bytes(data[0xc:0x10], "little"),
+        "reg1Value": int.from_bytes(data[0x10:0x18], "little"),
+        "reg1Reg": int.from_bytes(data[0x18:0x20], "little"),
+        "reg2Value": int.from_bytes(data[0x20:0x28], "little"),
+        "reg2Reg": int.from_bytes(data[0x28:0x30], "little"),
+        "reg3Value": int.from_bytes(data[0x30:0x38], "little"),
+        "reg3Reg": int.from_bytes(data[0x38:0x40], "little"),
+        "nx": struct.unpack("<f", data[0x40:0x44])[0],
+        "ny": struct.unpack("<f", data[0x44:0x48])[0],
+        "nz": struct.unpack("<f", data[0x48:0x4c])[0],
+        "backfaceDisable": int.from_bytes(data[0x4c:0x50], "little"),
+        "vertex1": [struct.unpack("<f", data[0x50:0x54])[0],
+                    struct.unpack("<f", data[0x54:0x58])[0],
+                    struct.unpack("<f", data[0x58:0x5c])[0],
+                    struct.unpack("<f", data[0x5c:0x60])[0]],
+        "vertex2": [struct.unpack("<f", data[0x60:0x64])[0],
+                    struct.unpack("<f", data[0x64:0x68])[0],
+                    struct.unpack("<f", data[0x68:0x6c])[0],
+                    struct.unpack("<f", data[0x6c:0x70])[0]],
+        "vertex3": [struct.unpack("<f", data[0x70:0x74])[0],
+                    struct.unpack("<f", data[0x74:0x78])[0],
+                    struct.unpack("<f", data[0x78:0x7c])[0],
+                    struct.unpack("<f", data[0x7c:0x80])[0]],
+        "uv1": [struct.unpack("<f", data[0x80:0x84])[0],
+                struct.unpack("<f", data[0x84:0x88])[0],
+                struct.unpack("<f", data[0x88:0x8c])[0],
+                struct.unpack("<f", data[0x8c:0x90])[0]],
+        "uv2": [struct.unpack("<f", data[0x90:0x94])[0],
+                struct.unpack("<f", data[0x94:0x98])[0],
+                struct.unpack("<f", data[0x98:0x9c])[0],
+                struct.unpack("<f", data[0x9c:0xa0])[0]],
+        "uv3": [struct.unpack("<f", data[0xa0:0xa4])[0],
+                struct.unpack("<f", data[0xa4:0xa8])[0],
+                struct.unpack("<f", data[0xa8:0xac])[0],
+                struct.unpack("<f", data[0xac:0xb0])[0]],
+        "rgba1": [int.from_bytes(data[0xb0:0xb4], "little"),
+                  int.from_bytes(data[0xb4:0xb8], "little"),
+                  int.from_bytes(data[0xb8:0xbc], "little"),
+                  int.from_bytes(data[0xbc:0xc0], "little")],
+        "rgba2": [int.from_bytes(data[0xc0:0xc4], "little"),
+                  int.from_bytes(data[0xc4:0xc8], "little"),
+                  int.from_bytes(data[0xc8:0xcc], "little"),
+                  int.from_bytes(data[0xcc:0xd0], "little")],
+        "rgba3": [int.from_bytes(data[0xd0:0xd4], "little"),
+                  int.from_bytes(data[0xd4:0xd8], "little"),
+                  int.from_bytes(data[0xd8:0xdc], "little"),
+                  int.from_bytes(data[0xdc:0xe0], "little")]
+    }
+    #print(vu_tri)
+    return vu_tri
+
+def get_uint_list(in_data, offset, num):
+    uint_list = []
+    for i in range(num):
+        data = int.from_bytes(in_data[offset:offset + 0x4], "little")
+        offset = offset + 0x4
+        uint_list.append(data)
+    #print(uint_list)
+    return uint_list
+
+def get_uint(in_data, offset):
+    return int.from_bytes(in_data[offset:offset + 0x4], "little")
+
+def get_uint16_list(in_data, offset, num):
+    uint16_list = []
+    for i in range(num):
+        data = int.from_bytes(in_data[offset:offset + 0x2], "little")
+        #uint16 = get_uint16(in_data, data)
+        offset = offset + 0x2
+        uint16_list.append(data)
+    #print(uint16_list)
+    return uint16_list
+    
+def get_uint16(in_data, offset):
+    return int.from_bytes(in_data[offset:offset + 0x2], "little")
     
 def get__sMat33(data):
     mat_33 = {
@@ -293,8 +502,18 @@ def get__sVec3(data):
     #print(vec_3)
     return vec_3
     
+def get__sGfxTexture_list(in_data, offset, num):
+    gfx_texture_list = []
+    for i in range(num):
+        data = int.from_bytes(in_data[offset:offset + 0x4], "little") - ANIM_TEX_END_OFFSET
+        gfx_texture = get__sGfxTexture(in_data, data)
+        offset = offset + 0x4
+        gfx_texture_list.append(gfx_texture)
+    #print(gfx_texture_list)
+    return gfx_texture_list
+    
 def get__sGfxTexture(in_data, offset):
-    data = in_data[offset:offset + 0x4c]
+    data = in_data[offset:offset + 0x4C]
     gfx_texture = {
         "flags": int.from_bytes(data[0x0:0x4], "little"),
         "frames": int.from_bytes(data[0x4:0x8], "little"),
@@ -302,7 +521,8 @@ def get__sGfxTexture(in_data, offset):
         "ht": int.from_bytes(data[0xc:0x10], "little", signed="True"),
         "fmt": int.from_bytes(data[0x10:0x14], "little", signed="True"),
         "clutVramAddr": int.from_bytes(data[0x14:0x18], "little", signed="True"),
-        "pClut": int.from_bytes(data[0x18:0x1c], "little") - ANIM_TEX_END_OFFSET, #change to char (this is a pointer)
+        # fix?
+        "pClut": get_uchar(in_data, int.from_bytes(data[0x18:0x1c], "little") - ANIM_TEX_END_OFFSET),
         "miptbp1L": int.from_bytes(data[0x1c:0x20], "little"),
         "miptbp1H": int.from_bytes(data[0x20:0x24], "little"),
         "miptbp2L": int.from_bytes(data[0x24:0x28], "little"),
@@ -314,10 +534,14 @@ def get__sGfxTexture(in_data, offset):
                     int.from_bytes(data[0x3c:0x40], "little", signed="True"),
                     int.from_bytes(data[0x40:0x44], "little", signed="True"),
                     int.from_bytes(data[0x44:0x48], "little", signed="True")],
-        "pBitmapList": int.from_bytes(data[0x48:0x4c], "little") - ANIM_TEX_END_OFFSET #change to char (this is a pointer)
+        # fix?
+        "pBitmapList": get_uchar(in_data, int.from_bytes(data[0x48:0x4c], "little") - ANIM_TEX_END_OFFSET)
     }
     #print(gfx_texture)
     return gfx_texture
+
+def get_uchar(in_data, offset):
+    return int.from_bytes(in_data[offset:offset + 0x1], "little")
 
 if __name__ == "__main__":
     main()
