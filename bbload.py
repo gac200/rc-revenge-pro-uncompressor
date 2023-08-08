@@ -217,15 +217,17 @@ def get__sLevelData(in_data, offset):
         "pVISData": get__sVISHdr(in_data, int.from_bytes(data[0xc:0x10], "little") - ANIM_TEX_END_OFFSET),
         "pSVF": get_svfHeader(in_data, int.from_bytes(data[0x10:0x14], "little") - ANIM_TEX_END_OFFSET),
         "pAColGrid": get__sColGridPSX(in_data, int.from_bytes(data[0x14:0x18], "little") - ANIM_TEX_END_OFFSET),
-        # This may not be necessary, left over from PS?
+        # This may not be necessary or may be broken; leftover from PS?
         #"pAColGridInt": get__sColGridPSX(in_data, int.from_bytes(data[0x18:0x1c], "little") - ANIM_TEX_END_OFFSET),
         "pCameras": get__sCamData(in_data, int.from_bytes(data[0x1c:0x20], "little") - ANIM_TEX_END_OFFSET),
         "pPaths": int.from_bytes(data[0x20:0x24], "little") - ANIM_TEX_END_OFFSET,
-        "pSFXData": int.from_bytes(data[0x24:0x28], "little") - ANIM_TEX_END_OFFSET, # working on this
-        "pMVARList": int.from_bytes(data[0x28:0x2c], "little"),
-        "pGeneralText": int.from_bytes(data[0x2c:0x30], "little"),
-        "pStartData":int.from_bytes(data[0x30:0x34], "little"),
-        "pPickupTable": int.from_bytes(data[0x34:0x38], "little"),
+        "pSFXData": get__sfxResource(in_data, int.from_bytes(data[0x24:0x28], "little") - ANIM_TEX_END_OFFSET),
+        # Not necessary for track ripping, too lazy to figure out the size
+        #"pMVARList": int.from_bytes(data[0x28:0x2c], "little") - ANIM_TEX_END_OFFSET, # working on this
+        #"pGeneralText": int.from_bytes(data[0x2c:0x30], "little"),
+        "pStartData": get_sStartData(in_data, int.from_bytes(data[0x30:0x34], "little") - ANIM_TEX_END_OFFSET),
+        # Not sure, but seems unnecessary, too lazy to figure out the size
+        #"pPickupTable": int.from_bytes(data[0x34:0x38], "little"),
         "pPickupPosData": int.from_bytes(data[0x38:0x3c], "little"),
         "pAINode": int.from_bytes(data[0x3c:0x40], "little"),
         "pHudRes": int.from_bytes(data[0x40:0x44], "little"),
@@ -240,11 +242,84 @@ def get__sLevelData(in_data, offset):
     }
     #print(level_data)
     level_data["pPaths"] = get__sCameraPath_list(in_data, level_data["pPaths"], level_data["pCameras"]["numCams"])
+    #level_data["pMVARList"] = get_sMenuItemVar_list(in_data, level_data["pMVARList"], 1) # unknown how menu items
     #print(level_data["pPaths"])
     return level_data
+
+def get_sStartData (in_data, offset):
+    data = in_data[offset:offset + 0x40]
+    start_data = {
+        "startPos": [get_SVECTOR(data[0x0:0x8], 0),
+                      get_SVECTOR(data[0x8:0x10], 0),
+                      get_SVECTOR(data[0x10:0x18], 0),
+                      get_SVECTOR(data[0x18:0x20], 0),
+                      get_SVECTOR(data[0x20:0x28], 0),
+                      get_SVECTOR(data[0x28:0x30], 0),
+                      get_SVECTOR(data[0x30:0x38], 0),
+                      get_SVECTOR(data[0x38:0x40], 0)]
+        }
+    #print(start_data)
+    return start_data
+
+def get_sMenuItemVar_list(in_data, offset, num):
+    menu_item_var_list = []
+    for i in range(num):
+        data = int.from_bytes(in_data[offset:offset + 0x4], "little") - ANIM_TEX_END_OFFSET
+        print(data)
+        menu_item_var = get__sMenuItemVar(in_data, data)
+        offset = offset + 0x4
+        menu_item_var_list.append(menu_item_var)
+    #print(menu_item_var_list)
+    return menu_item_var_list
+    
+def get__sMenuItemVar(in_data, offset):
+    data = in_data[offset:offset + 0x8]
+    menu_item_var = {
+        "pTextGroup": int.from_bytes(data[0x0:0x4], "little"), # working on this
+        "tagMVar": int.from_bytes(data[0x4:0x8], "little", signed = True),
+        "pFeedbackVar": int.from_bytes(data[0x8:0xc], "little"),
+        "value": int.from_bytes(data[0xc:0x10], "little", signed = True),
+        "minValue": int.from_bytes(data[0x10:0x14], "little", signed = True),
+        "maxValue": int.from_bytes(data[0x14:0x18], "little", signed = True),
+        "flags": int.from_bytes(data[0x18:0x1a], "little", signed = True),
+        "field7_0x1a": int.from_bytes(data[0x1a:0x1b], "little"), # undefined (???)
+        "field8_0x1b": int.from_bytes(data[0x1b:0x1c], "little"), # undefined (???)
+    }
+    #print(menu_item_var)
+    return menu_item_var 
+    
+def get__sfxResource(in_data, offset):
+    data = in_data[offset:offset + 0x24]
+    sfx_resource = {
+        "noVags": int.from_bytes(data[0x0:0x4], "little", signed=True),
+        "dataset": int.from_bytes(data[0x4:0x8], "little", signed=True),
+        "sfxData": get__sSfxResourceBlock(data[0x8:0x24])
+    }
+    #print(sfx_resource)
+    return sfx_resource
+    
+def get__sSfxResourceBlock(data):
+    sfx_resource_block = {
+        "pos": get_vec32_(data[0x0:0xc]),
+        "range": int.from_bytes(data[0xc:0x10], "little", signed=True),
+        "type": int.from_bytes(data[0x10:0x14], "little", signed=True),
+        "randInterval": int.from_bytes(data[0x14:0x16], "little"),
+        "pitchVariance": int.from_bytes(data[0x16:0x18], "little"),
+        "vag": int.from_bytes(data[0x18:0x1c], "little") #void** (???)
+    }
+    #print(sfx_resource_block)
+    return sfx_resource_block
+    
+def get_vec32_(data):
+    vec32 = {
+        "x": int.from_bytes(data[0x0:0x4], "little", signed=True),
+        "y": int.from_bytes(data[0x4:0x8], "little", signed=True),
+        "z": int.from_bytes(data[0x8:0xc], "little", signed=True)
+    }
+    #print(vec32)
+    return vec32
     
 def get__sCameraPath_list(in_data, offset, num):
-    print(offset)
     camera_path_list = []
     for i in range(num):
         data = int.from_bytes(in_data[offset:offset + 0x4], "little") - ANIM_TEX_END_OFFSET
